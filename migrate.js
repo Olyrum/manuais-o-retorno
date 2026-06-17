@@ -1,6 +1,6 @@
 import { initializeApp } from "firebase/app";
 import { getDatabase, ref, set, push } from "firebase/database";
-import * as xlsx from 'xlsx';
+import xlsx from 'xlsx';
 import fs from 'fs';
 
 // Your web app's Firebase configuration

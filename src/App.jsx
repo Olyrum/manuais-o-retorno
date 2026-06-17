@@ -1,14 +1,18 @@
 import { useState, useEffect } from 'react';
 import { database } from './firebase';
 import { ref, onValue, update } from 'firebase/database';
-import { BookOpen, CheckCircle, Clock, AlertCircle, Edit2, X } from 'lucide-react';
+import { BookOpen, CheckCircle, Clock, Search } from 'lucide-react';
 import './index.css';
 
 function App() {
   const [manuals, setManuals] = useState({});
   const [loading, setLoading] = useState(true);
-  const [editingManual, setEditingManual] = useState(null);
+  
+  // Advanced Filters State
+  const [searchQuery, setSearchQuery] = useState('');
   const [filterCapitulo, setFilterCapitulo] = useState('All');
+  const [filterStatus, setFilterStatus] = useState('All'); // 'All', 'OK', 'Pendente', 'Em Revisão'
+  const [hideCompleted, setHideCompleted] = useState(false);
 
   useEffect(() => {
     const manualsRef = ref(database, 'site_manuais_v1/manuals');
@@ -21,16 +25,10 @@ function App() {
     return () => unsubscribe();
   }, []);
 
-  const handleUpdate = async (e) => {
-    e.preventDefault();
-    if (!editingManual) return;
-    
-    const { id, ...data } = editingManual;
+  const handleFieldChange = async (id, field, newValue) => {
     const manualRef = ref(database, `site_manuais_v1/manuals/${id}`);
-    
     try {
-      await update(manualRef, data);
-      setEditingManual(null);
+      await update(manualRef, { [field]: newValue });
     } catch (error) {
       console.error("Error updating manual:", error);
       alert("Erro ao atualizar o manual.");
@@ -43,24 +41,82 @@ function App() {
     const ok = values.filter(m => m.status === 'OK').length;
     const pending = total - ok;
     
-    // Count how many have 'SIM' for both print and revisao
-    const fullyUpdated = values.filter(m => m.print_atualizado === 'SIM' && m.revisao === 'SIM').length;
-
-    return { total, ok, pending, fullyUpdated };
+    return { total, ok, pending };
   };
 
   const stats = getStats();
 
   const capitulos = [...new Set(Object.values(manuals).map(m => m.capitulo))].sort();
 
+  const isManualCompleted = (m) => m.status === 'OK';
+
   const filteredManuals = Object.entries(manuals).filter(([id, m]) => {
-    if (filterCapitulo === 'All') return true;
-    return m.capitulo === filterCapitulo;
+    // 1. Search Query
+    if (searchQuery.trim() !== '') {
+      const searchLower = searchQuery.toLowerCase();
+      if (!m.manual.toLowerCase().includes(searchLower) && !m.capitulo.toLowerCase().includes(searchLower)) {
+        return false;
+      }
+    }
+
+    // 2. Hide Completed
+    if (hideCompleted && isManualCompleted(m)) {
+      return false;
+    }
+
+    // 3. Filter Capitulo
+    if (filterCapitulo !== 'All' && m.capitulo !== filterCapitulo) {
+      return false;
+    }
+
+    // 4. Filter Status
+    if (filterStatus !== 'All' && m.status !== filterStatus) {
+      return false;
+    }
+
+    return true;
   });
 
   if (loading) {
     return <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>Carregando dados...</div>;
   }
+
+  // Custom inline select component to match badge style
+  const InlineSelect = ({ value, options, onChange, type }) => {
+    let badgeClass = 'pending';
+    if (value === 'OK' || value === 'SIM') badgeClass = 'ok';
+    if (value === 'NÃO') badgeClass = 'error';
+
+    return (
+      <div className={`badge ${badgeClass}`} style={{ padding: 0, overflow: 'hidden', display: 'inline-block', minWidth: '140px' }}>
+        <select 
+          value={value} 
+          onChange={(e) => onChange(e.target.value)}
+          style={{
+            background: 'transparent',
+            border: 'none',
+            color: 'inherit',
+            fontWeight: '600',
+            fontSize: '0.85rem',
+            padding: '4px 12px',
+            textTransform: 'uppercase',
+            letterSpacing: '0.05em',
+            cursor: 'pointer',
+            appearance: 'none',
+            outline: 'none',
+            width: '100%',
+            textAlign: 'center'
+          }}
+        >
+          {options.map(opt => (
+            <option key={opt} value={opt} style={{ textTransform: 'none' }}>
+              {opt}
+            </option>
+          ))}
+        </select>
+      </div>
+    );
+  };
 
   return (
     <div className="container">
@@ -102,14 +158,55 @@ function App() {
         </div>
       </div>
 
-      <div className="filters">
-        <label style={{ fontWeight: 500 }}>Filtrar por Capítulo:</label>
-        <select value={filterCapitulo} onChange={(e) => setFilterCapitulo(e.target.value)}>
-          <option value="All">Todos os Capítulos</option>
-          {capitulos.map(c => (
-            <option key={c} value={c}>{c}</option>
-          ))}
-        </select>
+      {/* Filter Bar */}
+      <div className="filter-bar">
+        <div className="filter-group" style={{ flex: 2 }}>
+          <label><Search size={14} style={{ verticalAlign: 'middle', marginRight: '4px' }} /> Buscar Manual</label>
+          <input 
+            type="text" 
+            placeholder="Digite o nome do manual..." 
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+          />
+        </div>
+
+        <div className="filter-group">
+          <label>Status Geral</label>
+          <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}>
+            <option value="All">Todos os Status</option>
+            <option value="Pendente">Apenas Pendentes</option>
+            <option value="OK">Apenas OK</option>
+            <option value="Em Revisão">Em Revisão</option>
+          </select>
+        </div>
+
+        <div className="filter-group">
+          <label>Capítulo</label>
+          <select value={filterCapitulo} onChange={(e) => setFilterCapitulo(e.target.value)}>
+            <option value="All">Todos os Capítulos</option>
+            {capitulos.map(c => (
+              <option key={c} value={c}>{c}</option>
+            ))}
+          </select>
+        </div>
+
+        <div className="filter-group" style={{ flex: 'none', alignSelf: 'flex-end', paddingBottom: '12px' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '12px', cursor: 'pointer', textTransform: 'none', color: 'var(--text-main)', fontSize: '0.95rem' }}>
+            <span className="switch">
+              <input 
+                type="checkbox" 
+                checked={hideCompleted}
+                onChange={(e) => setHideCompleted(e.target.checked)}
+              />
+              <span className="slider"></span>
+            </span>
+            Ocultar Finalizados
+          </label>
+        </div>
+      </div>
+
+      <div style={{ marginBottom: '16px', color: 'var(--text-muted)', fontSize: '0.9rem' }}>
+        Mostrando <strong>{filteredManuals.length}</strong> de {stats.total} manuais
       </div>
 
       <div className="glass-card" style={{ padding: 0, overflow: 'hidden' }}>
@@ -122,114 +219,49 @@ function App() {
                 <th>Status Geral</th>
                 <th>Print Atualizado?</th>
                 <th>Revisão?</th>
-                <th style={{ textAlign: 'right' }}>Ações</th>
               </tr>
             </thead>
             <tbody>
-              {filteredManuals.map(([id, manual]) => (
-                <tr key={id}>
+              {filteredManuals.map(([id, manual]) => {
+                const isCompleted = isManualCompleted(manual);
+                return (
+                <tr key={id} className={isCompleted ? 'completed-row' : ''}>
                   <td style={{ fontWeight: 500, color: 'var(--text-muted)' }}>{manual.capitulo}</td>
                   <td style={{ fontWeight: 500 }}>{manual.manual}</td>
-                  <td>
-                    <span className={`badge ${manual.status === 'OK' ? 'ok' : 'pending'}`}>
-                      {manual.status}
-                    </span>
+                  <td style={{ textDecoration: 'none' }}>
+                    <InlineSelect 
+                      value={manual.status} 
+                      options={['OK', 'Pendente', 'Em Revisão']}
+                      onChange={(val) => handleFieldChange(id, 'status', val)}
+                    />
                   </td>
-                  <td>
-                    <span className={`badge ${manual.print_atualizado === 'SIM' ? 'ok' : (manual.print_atualizado === 'NÃO' ? 'error' : 'pending')}`}>
-                      {manual.print_atualizado}
-                    </span>
+                  <td style={{ textDecoration: 'none' }}>
+                    <InlineSelect 
+                      value={manual.print_atualizado} 
+                      options={['SIM', 'NÃO', 'PARCIAL']}
+                      onChange={(val) => handleFieldChange(id, 'print_atualizado', val)}
+                    />
                   </td>
-                  <td>
-                    <span className={`badge ${manual.revisao === 'SIM' ? 'ok' : (manual.revisao === 'NÃO' ? 'error' : 'pending')}`}>
-                      {manual.revisao}
-                    </span>
-                  </td>
-                  <td style={{ textAlign: 'right' }}>
-                    <button 
-                      className="btn btn-secondary" 
-                      onClick={() => setEditingManual({ id, ...manual })}
-                      title="Editar"
-                    >
-                      <Edit2 size={16} /> Editar
-                    </button>
+                  <td style={{ textDecoration: 'none' }}>
+                    <InlineSelect 
+                      value={manual.revisao} 
+                      options={['SIM', 'NÃO', 'EM ANDAMENTO']}
+                      onChange={(val) => handleFieldChange(id, 'revisao', val)}
+                    />
                   </td>
                 </tr>
-              ))}
+              )})}
               {filteredManuals.length === 0 && (
                 <tr>
-                  <td colSpan="6" style={{ textAlign: 'center', padding: '40px' }}>Nenhum manual encontrado.</td>
+                  <td colSpan="5" style={{ textAlign: 'center', padding: '40px' }}>
+                    Nenhum manual encontrado para estes filtros.
+                  </td>
                 </tr>
               )}
             </tbody>
           </table>
         </div>
       </div>
-
-      {/* Edit Modal */}
-      {editingManual && (
-        <div className="modal-overlay" onClick={() => setEditingManual(null)}>
-          <div className="modal-content" onClick={e => e.stopPropagation()}>
-            <div className="flex justify-between items-center mb-4">
-              <h2 style={{ margin: 0, fontSize: '1.5rem' }}>Editar Manual</h2>
-              <button style={{ background: 'transparent', border: 'none', color: 'var(--text-muted)', cursor: 'pointer' }} onClick={() => setEditingManual(null)}>
-                <X size={24} />
-              </button>
-            </div>
-            
-            <p style={{ color: 'var(--text-muted)', marginBottom: '24px' }}>
-              <strong>{editingManual.manual}</strong> ({editingManual.capitulo})
-            </p>
-
-            <form onSubmit={handleUpdate}>
-              <div className="form-group">
-                <label>Status</label>
-                <select 
-                  value={editingManual.status} 
-                  onChange={e => setEditingManual({...editingManual, status: e.target.value})}
-                >
-                  <option value="OK">OK</option>
-                  <option value="Pendente">Pendente</option>
-                  <option value="Em Revisão">Em Revisão</option>
-                </select>
-              </div>
-
-              <div className="form-group">
-                <label>Print Atualizado?</label>
-                <select 
-                  value={editingManual.print_atualizado} 
-                  onChange={e => setEditingManual({...editingManual, print_atualizado: e.target.value})}
-                >
-                  <option value="SIM">SIM</option>
-                  <option value="NÃO">NÃO</option>
-                  <option value="PARCIAL">PARCIAL</option>
-                </select>
-              </div>
-
-              <div className="form-group">
-                <label>Revisão?</label>
-                <select 
-                  value={editingManual.revisao} 
-                  onChange={e => setEditingManual({...editingManual, revisao: e.target.value})}
-                >
-                  <option value="SIM">SIM</option>
-                  <option value="NÃO">NÃO</option>
-                  <option value="EM ANDAMENTO">EM ANDAMENTO</option>
-                </select>
-              </div>
-
-              <div className="modal-actions">
-                <button type="button" className="btn btn-secondary" onClick={() => setEditingManual(null)}>
-                  Cancelar
-                </button>
-                <button type="submit" className="btn btn-primary">
-                  Salvar Alterações
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

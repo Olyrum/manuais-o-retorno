@@ -210,6 +210,12 @@ tr:hover {
   background-color: rgba(255, 255, 255, 0.02);
 }
 
+.completed-row {
+  opacity: 0.5;
+  text-decoration: line-through;
+  transition: all 0.3s ease;
+}
+
 /* Modal */
 .modal-overlay {
   position: fixed;
@@ -272,6 +278,11 @@ select, input {
   transition: border-color 0.2s ease;
 }
 
+select option {
+  background-color: var(--bg-color-secondary);
+  color: var(--text-main);
+}
+
 select:focus, input:focus {
   border-color: var(--accent-color);
 }
@@ -283,17 +294,87 @@ select:focus, input:focus {
   margin-top: 32px;
 }
 
-/* Filters */
-.filters {
+/* Filter Bar */
+.filter-bar {
   display: flex;
+  flex-wrap: wrap;
   gap: 16px;
   margin-bottom: 24px;
   align-items: center;
+  background: var(--bg-glass);
+  backdrop-filter: blur(12px);
+  padding: 16px 24px;
+  border-radius: 12px;
+  border: 1px solid var(--border-color);
 }
 
-.filters select {
-  width: auto;
+.filter-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
   min-width: 200px;
+}
+
+.filter-group label {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.filter-bar input[type="text"], .filter-bar select {
+  width: 100%;
+}
+
+/* Toggle Switch */
+.switch {
+  position: relative;
+  display: inline-block;
+  width: 44px;
+  height: 24px;
+}
+
+.switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(255, 255, 255, 0.1);
+  transition: .3s;
+  border-radius: 24px;
+  border: 1px solid var(--border-color);
+}
+
+.slider:before {
+  position: absolute;
+  content: "";
+  height: 16px;
+  width: 16px;
+  left: 3px;
+  bottom: 3px;
+  background-color: var(--text-muted);
+  transition: .3s;
+  border-radius: 50%;
+}
+
+input:checked + .slider {
+  background-color: var(--accent-color);
+  border-color: var(--accent-color);
+}
+
+input:checked + .slider:before {
+  transform: translateX(20px);
+  background-color: #fff;
 }
 
 /* Utility classes */
