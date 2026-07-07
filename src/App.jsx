@@ -10,6 +10,7 @@ import './index.css';
 function App() {
   const [manuals, setManuals] = useState({});
   const [loading, setLoading] = useState(true);
+  const [dbError, setDbError] = useState(null);
   
   // Auth State
   const [user, setUser] = useState(null);
@@ -70,9 +71,11 @@ function App() {
     const unsubscribeDb = onValue(manualsRef, (snapshot) => {
       const data = snapshot.val();
       setManuals(data || {});
+      setDbError(null);
       setLoading(false);
     }, (error) => {
       console.error("Erro ao ler manuais (permissão ou conexão):", error);
+      setDbError(error.message || "Permissão negada ou erro de leitura no Realtime Database.");
       setLoading(false);
     });
 
@@ -214,6 +217,32 @@ function App() {
           </button>
         </div>
       </header>
+
+      {/* Alertas de Diagnóstico do Realtime Database */}
+      {dbError && (
+        <div style={{ backgroundColor: 'rgba(239, 68, 68, 0.15)', border: '1px solid rgba(239, 68, 68, 0.4)', color: '#f87171', padding: '16px 20px', borderRadius: '12px', marginBottom: '24px', display: 'flex', alignItems: 'center', gap: '12px', fontSize: '0.95rem' }}>
+          <ShieldCheck size={28} style={{ flexShrink: 0 }} />
+          <div>
+            <strong style={{ display: 'block', marginBottom: '4px', fontSize: '1.05rem' }}>🚨 Erro ao carregar dados do Realtime Database (nó: <code>site_manuais_v1/manuals</code>):</strong>
+            <span style={{ display: 'block', marginBottom: '6px' }}>{dbError}</span>
+            <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+              Dica: Acesse o Firebase Console &gt; Realtime Database &gt; Regras e certifique-se de que a regra permite leitura para usuários logados: <code>{`{ ".read": "auth != null", ".write": "auth != null" }`}</code>.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {!dbError && Object.keys(manuals).length === 0 && !loading && (
+        <div style={{ backgroundColor: 'rgba(234, 179, 8, 0.15)', border: '1px solid rgba(234, 179, 8, 0.4)', color: '#fde047', padding: '16px 20px', borderRadius: '12px', marginBottom: '24px', display: 'flex', alignItems: 'center', gap: '12px', fontSize: '0.95rem' }}>
+          <ShieldCheck size={28} style={{ flexShrink: 0 }} />
+          <div>
+            <strong style={{ display: 'block', marginBottom: '4px', fontSize: '1.05rem' }}>⚠️ Nenhum manual encontrado no nó <code>site_manuais_v1/manuals</code></strong>
+            <p style={{ margin: 0, fontSize: '0.85rem', color: 'var(--text-muted)' }}>
+              O Realtime Database conectou com sucesso, mas retornou uma lista vazia nesse caminho. Verifique no painel do Firebase se os seus manuais estão dentro da pasta <code>site_manuais_v1/manuals</code> ou em outro caminho.
+            </p>
+          </div>
+        </div>
+      )}
 
       {/* Stats Dashboard */}
       <div className="dashboard-grid">
