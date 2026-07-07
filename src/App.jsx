@@ -1,12 +1,20 @@
 import { useState, useEffect } from 'react';
-import { database } from './firebase';
+import { database, auth, db } from './firebase';
 import { ref, onValue, update } from 'firebase/database';
-import { BookOpen, CheckCircle, Clock, Search } from 'lucide-react';
+import { onAuthStateChanged, signOut } from 'firebase/auth';
+import { doc, getDoc } from 'firebase/firestore';
+import { BookOpen, CheckCircle, Clock, Search, LogOut, User, ShieldCheck } from 'lucide-react';
+import AuthScreen from './components/AuthScreen';
 import './index.css';
 
 function App() {
   const [manuals, setManuals] = useState({});
   const [loading, setLoading] = useState(true);
+  
+  // Auth State
+  const [user, setUser] = useState(null);
+  const [userStatus, setUserStatus] = useState(null);
+  const [authLoading, setAuthLoading] = useState(true);
   
   // Advanced Filters State
   const [searchQuery, setSearchQuery] = useState('');
@@ -14,16 +22,62 @@ function App() {
   const [filterStatus, setFilterStatus] = useState('All'); // 'All', 'OK', 'Pendente', 'Em Revisão'
   const [hideCompleted, setHideCompleted] = useState(false);
 
+  const checkUserStatus = async (currentUser) => {
+    const targetUser = currentUser || user;
+    if (!targetUser) return null;
+    
+    try {
+      const docRef = doc(db, "usuarios_aprovados", targetUser.uid);
+      const docSnap = await getDoc(docRef);
+      if (docSnap.exists()) {
+        const status = docSnap.data().status;
+        setUserStatus(status);
+        return status;
+      } else {
+        setUserStatus('não_cadastrado');
+        return 'não_cadastrado';
+      }
+    } catch (err) {
+      console.error("Erro ao verificar status no Firestore:", err);
+      return null;
+    }
+  };
+
   useEffect(() => {
+    const unsubscribeAuth = onAuthStateChanged(auth, async (currentUser) => {
+      setAuthLoading(true);
+      setUser(currentUser);
+      if (currentUser) {
+        await checkUserStatus(currentUser);
+      } else {
+        setUserStatus(null);
+      }
+      setAuthLoading(false);
+    });
+
+    return () => unsubscribeAuth();
+  }, []);
+
+  useEffect(() => {
+    // Só carrega os manuais do Realtime Database se estiver logado E aprovado!
+    if (!user || userStatus !== 'aprovado') {
+      setLoading(false);
+      return;
+    }
+
+    setLoading(true);
     const manualsRef = ref(database, 'site_manuais_v1/manuals');
-    const unsubscribe = onValue(manualsRef, (snapshot) => {
+    const unsubscribeDb = onValue(manualsRef, (snapshot) => {
       const data = snapshot.val();
       setManuals(data || {});
       setLoading(false);
+    }, (error) => {
+      console.error("Erro ao ler manuais (permissão ou conexão):", error);
+      setLoading(false);
     });
 
-    return () => unsubscribe();
-  }, []);
+    return () => unsubscribeDb();
+  }, [user, userStatus]);
 
   const handleFieldChange = async (id, field, newValue) => {
     const manualRef = ref(database, `site_manuais_v1/manuals/${id}`);
@@ -31,7 +85,7 @@ function App() {
       await update(manualRef, { [field]: newValue });
     } catch (error) {
       console.error("Error updating manual:", error);
-      alert("Erro ao atualizar o manual.");
+      alert("Erro ao atualizar o manual. Verifique suas permissões.");
     }
   };
 
@@ -77,15 +131,30 @@ function App() {
     return true;
   });
 
+  if (authLoading) {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', flexDirection: 'column', gap: '16px' }}>
+        <div className="spinner"></div>
+        <p style={{ color: 'var(--text-muted)' }}>Verificando autenticação no Firebase...</p>
+      </div>
+    );
+  }
+
+  // Se não estiver logado ou se não estiver com status == 'aprovado' -> Exibir tela de Auth
+  if (!user || userStatus !== 'aprovado') {
+    return <AuthScreen user={user} status={userStatus} onRefresh={() => checkUserStatus(user)} />;
+  }
+
   if (loading) {
-    return <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>Carregando dados...</div>;
+    return <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>Carregando manuais do banco...</div>;
   }
 
   // Custom inline select component to match badge style
   const InlineSelect = ({ value, options, onChange, type }) => {
     let badgeClass = 'pending';
     if (value === 'OK' || value === 'SIM') badgeClass = 'ok';
-    if (value === 'NÃO') badgeClass = 'error';
+    else if (value === 'NÃO') badgeClass = 'error';
+    else if (value === 'Em Revisão') badgeClass = 'review';
 
     return (
       <div className={`badge ${badgeClass}`} style={{ padding: 0, overflow: 'hidden', display: 'inline-block', minWidth: '140px' }}>
@@ -120,9 +189,30 @@ function App() {
 
   return (
     <div className="container">
-      <header style={{ marginBottom: '48px' }}>
-        <h1>Validação de Manuais</h1>
-        <p className="subtitle">Gestão e acompanhamento das atualizações de manuais</p>
+      <header style={{ marginBottom: '48px', display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: '16px' }}>
+        <div>
+          <h1>Validação de Manuais</h1>
+          <p className="subtitle">Gestão e acompanhamento das atualizações de manuais</p>
+        </div>
+
+        {/* User Info & Logout Header Badge */}
+        <div className="glass-card flex items-center gap-4" style={{ padding: '10px 16px', borderRadius: '50px', border: '1px solid var(--border-color)', background: 'var(--bg-glass)' }}>
+          <div className="flex items-center gap-2" style={{ color: 'var(--text-main)', fontSize: '0.9rem' }}>
+            <div style={{ backgroundColor: 'var(--status-ok-bg)', padding: '6px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              <ShieldCheck size={16} color="var(--status-ok-text)" />
+            </div>
+            <span><strong>{user.email}</strong></span>
+          </div>
+          <button 
+            onClick={() => signOut(auth)} 
+            className="btn btn-secondary" 
+            style={{ padding: '6px 14px', fontSize: '0.85rem', borderRadius: '20px' }}
+            title="Sair do sistema"
+          >
+            <LogOut size={14} />
+            <span>Sair</span>
+          </button>
+        </div>
       </header>
 
       {/* Stats Dashboard */}
