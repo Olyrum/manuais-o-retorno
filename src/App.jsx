@@ -21,6 +21,7 @@ function App() {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterCapitulo, setFilterCapitulo] = useState('All');
   const [filterStatus, setFilterStatus] = useState('All'); // 'All', 'OK', 'Pendente', 'Em Revisão'
+  const [filterRevisao, setFilterRevisao] = useState('All');
   const [hideCompleted, setHideCompleted] = useState(false);
 
   const checkUserStatus = async (currentUser) => {
@@ -104,6 +105,7 @@ function App() {
   const stats = getStats();
 
   const capitulos = [...new Set(Object.values(manuals).map(m => m.capitulo))].sort();
+  const revisoes = [...new Set(Object.values(manuals).map(m => m.revisao))].filter(Boolean).sort();
 
   const isManualCompleted = (m) => m.status === 'OK';
 
@@ -128,6 +130,11 @@ function App() {
 
     // 4. Filter Status
     if (filterStatus !== 'All' && m.status !== filterStatus) {
+      return false;
+    }
+
+    // 5. Filter Revisão
+    if (filterRevisao !== 'All' && m.revisao !== filterRevisao) {
       return false;
     }
 
@@ -305,6 +312,16 @@ function App() {
             <option value="All">Todos os Capítulos</option>
             {capitulos.map(c => (
               <option key={c} value={c}>{c}</option>
+            ))}
+          </select>
+        </div>
+
+        <div className="filter-group">
+          <label>Em Revisão?</label>
+          <select value={filterRevisao} onChange={(e) => setFilterRevisao(e.target.value)}>
+            <option value="All">Todas as Opções</option>
+            {revisoes.map(r => (
+              <option key={r} value={r}>{r}</option>
             ))}
           </select>
         </div>
